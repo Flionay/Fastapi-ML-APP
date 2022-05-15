@@ -1,8 +1,10 @@
 from fastapi import FastAPI
-from pydantic import BaseModel
-from model import ModelApp
+from pydantic import BaseModel,ValidationError,validator
+from ML_Module.model import ModelApp
 from typing import List
 import numpy as np
+import warnings
+warnings.filterwarnings("ignore")
 
 app = FastAPI(
     description="FastAPI for MachineLearning Application",
@@ -23,25 +25,31 @@ class PredictRequest(BaseModel):
     data: List[List[float]]
 
 
+    @validator("data")
+    def check_dimensionality(cls, v):
+        n_features = 13
+        for point in v:
+            if len(point) != n_features:
+                raise ValueError(f"Each data point must contain {n_features} features")
+
+        return v
+
+
 class PredictResponse(BaseModel):
     data: List[float]
 
 
 @app.post("/predict", response_model=PredictResponse)
-async def predict(input_data: PredictRequest):
-    print(input_data)
+def predict(input_data: PredictRequest):
+
+    # input data process
     input_data = np.array(input_data.data[0])
+    input_data = model_app.input_process_component(input_data)
 
+    # model prediction
+    out = model_app.model.predict(input_data)
 
-    # feature selection
-    input_data = input_data[[True, False, False, False, True, True, False, True, False,
-                   False, False, False, True]]
-
-    input_data = model_app.x_scaler.transform(input_data.reshape((1,-1)))
-
-    model = model_app.model
-    out = model.predict(input_data)
-    out = model_app.y_scaler.inverse_transform(out.reshape((1,-1)))
-    print(out)
+    # output data process
+    out = model_app.output_process_component(out)
 
     return PredictResponse(data=[out])
